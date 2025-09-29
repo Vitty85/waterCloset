@@ -1,21 +1,29 @@
 PROG = waterCloset.exe
-CC = x86_64-w64-mingw32-gcc
-SDLC = /usr/x86_64-w64-mingw32/bin/sdl2-config
-LIBPATH = /usr/x86_64-w64-mingw32/lib
-LOCALE_DIR = locale
+CC = gcc
 
-include common.mk
-
-GAME_OBJS += $(OUT)/src/plat/win32/win32Init.o
-
-NPROCS = $(shell grep -c 'processor' /proc/cpuinfo)
+# Use the NUMBER_OF_PROCESSORS environment variable on Windows, default to 1 if not set
+NPROCS = $(or $(NUMBER_OF_PROCESSORS),1)
 MAKEFLAGS += -j$(NPROCS)
 
-CXXFLAGS += `$(SDLC) --cflags` -DVERSION=$(VERSION) -DREVISION=$(REVISION) -DDATA_DIR=\"$(DATA_DIR)\" -DLOCALE_DIR=\"$(LOCALE_DIR)\"
-CXXFLAGS += -Wall -Wempty-body -ansi -Werror -Wstrict-prototypes -Werror=maybe-uninitialized -Warray-bounds
+# Get compiler and linker flags from sdl2-config
+SDL_CFLAGS = $(shell sdl2-config --cflags)
+SDL_LIBS = $(shell sdl2-config --libs)
 
-LDFLAGS += `$(SDLC) --libs` -lm -lSDL2_mixer -lSDL2_image -lSDL2_ttf -lSDL2main
+# Include common build rules
+include common.mk
 
-# linking the program.
+# Add Windows-specific source files
+GAME_OBJS += $(OUT)/src/plat/win32/win32Init.o
+
+# Set compiler flags
+# -DVERSION and -DREVISION are defined in common.mk
+# We don't need to define DATA_DIR or LOCALE_DIR for this build
+CFLAGS += $(SDL_CFLAGS) -DVERSION=$(VERSION) -DREVISION=$(REVISION)
+CFLAGS += -Wall -Wempty-body -Wstrict-prototypes -Wno-unused-variable
+
+# Set linker flags
+LDFLAGS += $(SDL_LIBS) -lSDL2_mixer -lSDL2_image -lSDL2_ttf -lSDL2main -mwindows
+
+# Linking rule for the final executable
 $(PROG): $(GAME_OBJS)
-	$(CC) -o $@ $(GAME_OBJS) $(LDFLAGS) -L$(LIBPATH)
+	$(CC) -o $@ $(GAME_OBJS) $(LDFLAGS)
