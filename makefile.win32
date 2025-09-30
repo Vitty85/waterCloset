@@ -1,8 +1,8 @@
 PROG = waterCloset.exe
-MAP_PROG = mapEditor
+MAP_PROG = mapEditor.exe
 CC = gcc
 
-DATA_DIR ?= C:/Users/alfieriv/Desktop/waterCloset-makewin
+DATA_DIR ?= .
 # Use the NUMBER_OF_PROCESSORS environment variable on Windows, default to 1 if not set
 NPROCS = $(or $(NUMBER_OF_PROCESSORS),1)
 MAKEFLAGS += -j$(NPROCS)
