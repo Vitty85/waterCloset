@@ -58,6 +58,44 @@ static Entity *entity;
 static Entity *selectedEntity;
 static int mode;
 
+#ifdef _WIN32
+static void saveMap(cJSON *root)
+{
+	int x, y;
+	char *buff;
+	size_t bufsize;
+	char *ptr;
+	int written;
+	size_t remaining;
+
+	bufsize = (MAP_WIDTH * MAP_HEIGHT * 12) + 1;
+	buff = (char*)malloc(bufsize);
+	if (!buff) {
+		return;
+	}
+
+	ptr = buff;
+	remaining = bufsize;
+
+	for (y = 0 ; y < MAP_HEIGHT ; y++) {
+		for (x = 0 ; x < MAP_WIDTH ; x++) {
+			written = snprintf(ptr, remaining, "%d ", stage.map[x][y]);
+			if (written < 0 || (size_t)written >= remaining) {
+				// buffer esaurito → tronca
+				buff[bufsize - 1] = '\0';
+				goto done;
+			}
+			ptr += written;
+			remaining -= written;
+		}
+	}
+
+	done:
+		cJSON_AddStringToObject(root, "map", buff);
+		
+	free(buff);
+}
+#else
 static void saveMap(cJSON *root)
 {
 	int x, y;
@@ -81,6 +119,7 @@ static void saveMap(cJSON *root)
 
 	free(buff);
 }
+#endif
 
 static void saveEntities(cJSON *root)
 {
@@ -141,7 +180,9 @@ static void saveStage(void)
 	sprintf(filename, "data/stages/%03d.json", stage.num);
 
 	printf("Saving %s ...\n", filename);
-
+#ifdef _WIN32
+	fflush(stdout);
+#endif
 	root = cJSON_CreateObject();
 
 	cJSON_AddNumberToObject(root, "cloneLimit", stage.cloneLimit);
@@ -162,6 +203,9 @@ static void saveStage(void)
 	free(out);
 
 	printf("Saved %s\n", filename);
+#ifdef _WIN32
+	fflush(stdout);
+#endif
 }
 
 static void createEntity(void)
