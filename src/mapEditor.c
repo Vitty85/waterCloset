@@ -461,22 +461,22 @@ static void logic(void)
 	{
 		cameraTimer = 3;
 
-		if (app.keyboard[SDL_SCANCODE_W])
+		if (app.keyboard[SDL_SCANCODE_UP])
 		{
 			stage.camera.y -= TILE_SIZE;
 		}
 
-		if (app.keyboard[SDL_SCANCODE_S])
+		if (app.keyboard[SDL_SCANCODE_DOWN])
 		{
 			stage.camera.y += TILE_SIZE;
 		}
 
-		if (app.keyboard[SDL_SCANCODE_A])
+		if (app.keyboard[SDL_SCANCODE_LEFT])
 		{
 			stage.camera.x -= TILE_SIZE;
 		}
 
-		if (app.keyboard[SDL_SCANCODE_D])
+		if (app.keyboard[SDL_SCANCODE_RIGHT])
 		{
 			stage.camera.x += TILE_SIZE;
 		}
