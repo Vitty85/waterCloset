@@ -34,6 +34,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "system/draw.h"
 #include "world/entityFactory.h"
 
+#include <SDL2/SDL_ttf.h>
+#include <dirent.h>
+
+#define WINDOW_W 640
+#define WINDOW_H 480
+
 enum
 {
 	MODE_TILE,
@@ -638,7 +644,7 @@ static void centreOnPlayer(void)
 	}
 }
 
-static void handleCommandLine(int argc, char *argv[])
+/*static void handleCommandLine(int argc, char *argv[])
 {
 	int i;
 
@@ -707,7 +713,7 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
-}
+}*/
 
 static void capFrameRate(long *then, float *remainder)
 {
@@ -733,3 +739,283 @@ static void capFrameRate(long *then, float *remainder)
 	*then = SDL_GetTicks();
 }
 
+typedef struct {
+    int *data;
+    size_t size;
+    size_t capacity;
+} IntVector;
+
+void vector_init(IntVector *v) {
+    v->size = 0;
+    v->capacity = 8;
+    v->data = malloc(v->capacity * sizeof(int));
+}
+
+void vector_push(IntVector *v, int val) {
+    if (v->size >= v->capacity) {
+        v->capacity *= 2;
+        v->data = realloc(v->data, v->capacity * sizeof(int));
+    }
+    v->data[v->size++] = val;
+}
+
+int vector_max_except(IntVector *v, int exclude) {
+    int max = -1;
+    for (size_t i = 0; i < v->size; i++) {
+        if (v->data[i] != exclude && v->data[i] > max) {
+            max = v->data[i];
+        }
+    }
+    return max;
+}
+
+void vector_free(IntVector *v) {
+    free(v->data);
+}
+
+int copy_file(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    if (!in) return -1;
+    FILE *out = fopen(dst, "wb");
+    if (!out) { fclose(in); return -1; }
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        fwrite(buf, 1, n, out);
+    }
+    fclose(in);
+    fclose(out);
+    return 0;
+}
+
+void load_stages(const char *folder, IntVector *ids) {
+    DIR *dir = opendir(folder);
+    if (!dir) return;
+
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strstr(ent->d_name, ".json")) {
+            char name[256];
+            strncpy(name, ent->d_name, sizeof(name));
+            name[sizeof(name)-1] = 0;
+            char *dot = strchr(name, '.');
+            if (dot) *dot = 0;
+
+            int valid = 1;
+            for (int i=0; name[i]; i++) {
+                if (!isdigit((unsigned char)name[i])) {
+                    valid = 0;
+                    break;
+                }
+            }
+            if (valid) {
+                int n = atoi(name);
+                vector_push(ids, n);
+            }
+        }
+    }
+    closedir(dir);
+}
+
+void draw_text(SDL_Renderer *ren, TTF_Font *font, const char *msg, int x, int y, SDL_Color color) {
+    SDL_Surface *surf = TTF_RenderText_Solid(font, msg, color);
+    SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, surf);
+    SDL_Rect dst = {x, y, surf->w, surf->h};
+    SDL_RenderCopy(ren, tex, NULL, &dst);
+    SDL_FreeSurface(surf);
+    SDL_DestroyTexture(tex);
+}
+
+void draw_list(SDL_Renderer *ren, TTF_Font *font, IntVector *ids, int selected, int offset) {
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_RenderClear(ren);
+
+    for (int i=0; i<10 && i+offset<ids->size; i++) {
+        int stage = ids->data[i+offset];
+        char label[64];
+        snprintf(label, sizeof(label), "Stage %d", stage);
+
+        SDL_Color col = (i+offset == selected) ? (SDL_Color){0,200,255} : (SDL_Color){200,200,200};
+
+        SDL_Surface *surf = TTF_RenderText_Solid(font, label, col);
+        SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, surf);
+
+        int x = (WINDOW_W - surf->w) / 2;
+        int y = 50 + i*40;
+        SDL_Rect dst = {x, y, surf->w, surf->h};
+
+        SDL_RenderCopy(ren, tex, NULL, &dst);
+        SDL_FreeSurface(surf);
+        SDL_DestroyTexture(tex);
+    }
+    SDL_RenderPresent(ren);
+}
+
+int choose_stage(SDL_Renderer *ren, TTF_Font *font, IntVector *stages) {
+    int running = 1;
+    int selected = 0;
+    int offset = 0;
+
+    while (running) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) exit(0);
+            if (e.type == SDL_KEYDOWN) {
+                if (e.key.keysym.sym == SDLK_DOWN && selected < (int)stages->size-1) {
+                    selected++;
+                    if (selected >= offset+10) offset++;
+                }
+                if (e.key.keysym.sym == SDLK_UP && selected > 0) {
+                    selected--;
+                    if (selected < offset) offset--;
+                }
+                if (e.key.keysym.sym == SDLK_RETURN) {
+                    running = 0;
+                }
+            }
+        }
+        draw_list(ren, font, stages, selected, offset);
+        SDL_Delay(16);
+    }
+    return stages->data[selected];
+}
+
+int choose_action(SDL_Renderer *ren, TTF_Font *font) {
+    int action = 0;
+    int running = 1;
+
+    while (running) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) exit(0);
+            if (e.type == SDL_KEYDOWN) {
+                if (e.key.keysym.sym == SDLK_LEFT) action = 0;
+                if (e.key.keysym.sym == SDLK_RIGHT) action = 1;
+                if (e.key.keysym.sym == SDLK_RETURN) running = 0;
+            }
+        }
+
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+
+        SDL_Color col1 = (action==0) ? (SDL_Color){0,200,0} : (SDL_Color){150,150,150};
+        SDL_Color col2 = (action==1) ? (SDL_Color){0,200,0} : (SDL_Color){150,150,150};
+
+        draw_text(ren, font, "Edit current Stage", 150, 200, col1);
+        draw_text(ren, font, "Clone as new Stage", 350, 200, col2);
+
+        SDL_RenderPresent(ren);
+        SDL_Delay(16);
+    }
+    return action;
+}
+
+int main(int argc, char **argv) {
+    const char *folder = "data/stages";
+    IntVector stages;
+    vector_init(&stages);
+    load_stages(folder, &stages);
+
+    if (stages.size == 0) {
+        printf("No Stage found!\n");
+        return 1;
+    }
+	
+    SDL_Init(SDL_INIT_VIDEO);
+    TTF_Init();
+
+    SDL_Window *win = SDL_CreateWindow("Map Editor",
+                                       SDL_WINDOWPOS_CENTERED,
+                                       SDL_WINDOWPOS_CENTERED,
+                                       WINDOW_W, WINDOW_H, 0);
+    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+
+    TTF_Font *font = TTF_OpenFont("fonts/EnterCommand.ttf", 24);
+    if (!font) {
+        printf("Font error: %s\n", TTF_GetError());
+        return 1;
+    }
+
+    int chosen = choose_stage(ren, font, &stages);
+    printf("Chosen Stage: %d\n", chosen);
+
+    int action = choose_action(ren, font);
+
+    if (action == 0) {
+        printf("Edit Stage %d\n", chosen);
+    } else {
+        int max = vector_max_except(&stages, 999);
+        int newId = max+1;
+        char src[256], dst[256];
+        snprintf(src, sizeof(src), "%s/%03d.json", folder, chosen);
+        snprintf(dst, sizeof(dst), "%s/%03d.json", folder, newId);
+        if (copy_file(src, dst)==0) {
+            printf("Stage cloned %d -> Stage %d\n", chosen, newId);
+            chosen = newId;
+        } else {
+            printf("Error cloning selected Stage!\n");
+        }
+    }
+
+    SDL_DestroyRenderer(ren);
+    SDL_DestroyWindow(win);
+    TTF_CloseFont(font);
+    TTF_Quit();
+    SDL_Quit();
+    vector_free(&stages);
+	
+	long then;
+	float remainder;
+
+	memset(&app, 0, sizeof(App));
+	app.texturesTail = &app.texturesHead;
+
+	tile = 1;
+	cameraTimer = 0;
+	mode = MODE_TILE;
+	entIndex = 0;
+	selectedEntity = NULL;
+
+	initSDL();
+
+	atexit(cleanup);
+
+	SDL_ShowCursor(1);
+
+	initGame();
+
+	memset(&stage, 0, sizeof(Stage));
+	stage.entityTail = &stage.entityHead;
+
+	stage.num = chosen;
+
+	entities = initAllEnts(&numEnts);
+	entity = entities[0];
+
+	loadTiles();
+
+	tryLoadStage();
+
+	centreOnPlayer();
+
+	then = SDL_GetTicks();
+
+	remainder = 0;
+
+	while (1)
+	{
+		prepareScene();
+
+		doInput();
+
+		logic();
+
+		draw();
+
+		presentScene();
+
+		capFrameRate(&then, &remainder);
+	}
+
+	return 0;
+}
